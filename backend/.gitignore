@@ -1,0 +1,64 @@
+# Environment
+.env
+.venv
+env/
+venv/
+
+# Claude
+.claude
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+.installed.cfg
+MANIFEST
+
+# Django
+db.sqlite3
+*.db
+staticfiles/
+media/
+
+# Distribution
+build/
+dist/
+wheels/
+sdist/
+
+# Testing
+.tox/
+.coverage
+.pytest_cache/
+htmlcov/
+coverage/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Editors
+.idea
+.vscode
+*.suo
+*.sw?
+*.ntvs*
+*.njsproj
+*.sln
+*.tsbuildinfo
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Celery
+celerybeat-schedule
+celerybeat-schedule-wal

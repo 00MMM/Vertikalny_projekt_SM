@@ -1,0 +1,12 @@
+services:
+  mosquitto:
+    image: iegomez/mosquitto-go-auth
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/etc/mosquitto/mosquitto.conf
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
