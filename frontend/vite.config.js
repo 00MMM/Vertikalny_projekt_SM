@@ -4,8 +4,8 @@ import react from '@vitejs/plugin-react';
 // https://vite.dev/config/
 export default defineConfig({
   resolve: {
-    // Prefer TS/TSX and JSX source files over legacy .js duplicates.
-    extensions: ['.mjs', '.mts', '.tsx', '.ts', '.jsx', '.js', '.json'],
+    // Prefer JSX source files in this JavaScript project.
+    extensions: ['.mjs', '.jsx', '.js', '.json'],
   },
   server: {
     proxy: {
