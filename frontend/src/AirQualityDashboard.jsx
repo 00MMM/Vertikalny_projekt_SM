@@ -2,13 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
   CircularProgress,
   CssBaseline,
   Divider,
-  Grid,
+  IconButton,
+  MenuItem,
+  Select,
   Stack,
   Table,
   TableBody,
@@ -16,28 +19,70 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
+import LogoutIcon from '@mui/icons-material/Logout';
+import SaveIcon from '@mui/icons-material/Save';
 import { alpha } from '@mui/material/styles';
 import { LineChart } from '@mui/x-charts/LineChart';
 import AppTheme from './shared-theme/AppTheme';
 
-const metricMeta = {
-  aqi: { label: 'AQI', color: '#d97706' },
-  pm10: { label: 'PM10', color: '#0f766e' },
-  o3: { label: 'O3', color: '#2563eb' },
-  no2: { label: 'NO2', color: '#7c3aed' },
-};
+const IGNORED_FIELDS = new Set(['id', 'device_id', 'received_at', 'time', 'timestamp']);
+const COLORS = ['#2563eb', '#0f766e', '#d97706', '#7c3aed', '#dc2626', '#0891b2', '#65a30d'];
 
-function formatValue(value, unit = '') {
-  if (value === null || value === undefined) {
+function formatLabel(value) {
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatValue(value) {
+  if (value === null || value === undefined || value === '') {
     return '--';
   }
-  return `${value}${unit ? ` ${unit}` : ''}`;
+  return String(value);
+}
+
+function getMeasurementFields(measurement) {
+  return Object.keys(measurement ?? {}).filter((key) => !IGNORED_FIELDS.has(key));
+}
+
+function getNumericFields(measurements) {
+  const fields = new Set();
+
+  measurements.forEach((measurement) => {
+    getMeasurementFields(measurement).forEach((field) => {
+      if (typeof measurement[field] === 'number') {
+        fields.add(field);
+      }
+    });
+  });
+
+  return Array.from(fields);
+}
+
+function flattenDevices(devices) {
+  return devices.flatMap((device) =>
+    (device.measurements ?? []).map((measurement) => ({
+      device_id: device.device_id,
+      ...measurement,
+    })),
+  );
+}
+
+function sortByTimeDesc(measurements) {
+  return [...measurements].sort((a, b) => {
+    const left = new Date(a.received_at ?? 0).getTime();
+    const right = new Date(b.received_at ?? 0).getTime();
+    return right - left;
+  });
 }
 
 function TrendChip({ value }) {
-  const label = value > 0 ? `+${value}` : value < 0 ? `${value}` : '0';
+  const label = value > 0 ? `+${value}` : value < 0 ? String(value) : '0';
   const color = value > 0 ? 'error' : value < 0 ? 'success' : 'default';
 
   return <Chip size="small" color={color} label={label} />;
@@ -49,7 +94,7 @@ function SummaryCard({ card }) {
       variant="outlined"
       sx={{
         height: '100%',
-        borderRadius: 4,
+        borderRadius: 2,
         background:
           'linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(245,247,250,0.82) 100%)',
         backdropFilter: 'blur(10px)',
@@ -58,13 +103,13 @@ function SummaryCard({ card }) {
       <CardContent>
         <Stack spacing={2}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="overline" sx={{ letterSpacing: 1.2 }}>
+            <Typography variant="overline" sx={{ letterSpacing: 0 }}>
               {card.label}
             </Typography>
             <TrendChip value={card.trend} />
           </Stack>
-          <Typography variant="h3" sx={{ fontWeight: 700 }}>
-            {formatValue(card.value, card.unit)}
+          <Typography variant="h4" sx={{ fontWeight: 700, overflowWrap: 'anywhere' }}>
+            {formatValue(card.value)}
           </Typography>
         </Stack>
       </CardContent>
@@ -72,32 +117,186 @@ function SummaryCard({ card }) {
   );
 }
 
-export default function AirQualityDashboard() {
-  const [data, setData] = useState(null);
+function DeviceRegistration({ authToken, disabled, onCreated }) {
+  const [deviceId, setDeviceId] = useState('');
+  const [fields, setFields] = useState([{ name: '', type: 'float' }]);
+  const [createdToken, setCreatedToken] = useState('');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  function updateField(index, key, value) {
+    setFields((currentFields) =>
+      currentFields.map((field, fieldIndex) =>
+        fieldIndex === index ? { ...field, [key]: value } : field,
+      ),
+    );
+  }
+
+  function addField() {
+    setFields((currentFields) => [...currentFields, { name: '', type: 'float' }]);
+  }
+
+  function removeField(index) {
+    setFields((currentFields) => currentFields.filter((_, fieldIndex) => fieldIndex !== index));
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError('');
+    setCreatedToken('');
+
+    const schema = fields.reduce((result, field) => {
+      const name = field.name.trim();
+      if (name) {
+        result[name] = field.type;
+      }
+      return result;
+    }, {});
+
+    try {
+      const response = await fetch('/devices/add_device/', {
+        method: 'POST',
+        headers: {
+          Authorization: `Token ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ device_id: deviceId.trim(), schema }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? `Create device returned ${response.status}`);
+      }
+
+      setCreatedToken(payload.token);
+      setDeviceId('');
+      setFields([{ name: '', type: 'float' }]);
+      onCreated();
+    } catch {
+      setError('Registracia zariadenia zlyhala.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Card variant="outlined" sx={{ borderRadius: 2 }}>
+      <CardContent>
+        <Stack component="form" spacing={2} onSubmit={handleSubmit}>
+          <Typography variant="h6">Registracia zariadenia</Typography>
+
+          {disabled && (
+            <Alert severity="info">
+              Registracia zariadenia vyzaduje realne admin prihlasenie.
+            </Alert>
+          )}
+          {error && <Alert severity="error">{error}</Alert>}
+          {createdToken && (
+            <Alert severity="success">
+              <Stack spacing={0.5}>
+                <Typography variant="body2">Device token</Typography>
+                <Typography component="code" sx={{ overflowWrap: 'anywhere' }}>
+                  {createdToken}
+                </Typography>
+              </Stack>
+            </Alert>
+          )}
+
+          <TextField
+            disabled={disabled}
+            fullWidth
+            label="Device ID"
+            value={deviceId}
+            onChange={(event) => setDeviceId(event.target.value)}
+            required
+          />
+
+          <Stack spacing={1.5}>
+            {fields.map((field, index) => (
+              <Stack
+                key={index}
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1}
+                alignItems={{ xs: 'stretch', sm: 'center' }}
+              >
+                <TextField
+                  disabled={disabled}
+                  fullWidth
+                  label="Field"
+                  value={field.name}
+                  onChange={(event) => updateField(index, 'name', event.target.value)}
+                  required
+                />
+                <Select
+                  disabled={disabled}
+                  value={field.type}
+                  onChange={(event) => updateField(index, 'type', event.target.value)}
+                  sx={{ minWidth: { sm: 130 } }}
+                >
+                  <MenuItem value="int">int</MenuItem>
+                  <MenuItem value="float">float</MenuItem>
+                  <MenuItem value="string">string</MenuItem>
+                  <MenuItem value="bool">bool</MenuItem>
+                </Select>
+                <IconButton
+                  aria-label="Odstranit field"
+                  disabled={disabled || fields.length === 1}
+                  onClick={() => removeField(index)}
+                >
+                  <DeleteIcon />
+                </IconButton>
+              </Stack>
+            ))}
+          </Stack>
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            <Button disabled={disabled} startIcon={<AddIcon />} onClick={addField} variant="outlined">
+              Field
+            </Button>
+            <Button
+              disabled={disabled || submitting}
+              startIcon={submitting ? <CircularProgress size={18} /> : <SaveIcon />}
+              type="submit"
+              variant="contained"
+            >
+              Registrovat
+            </Button>
+          </Stack>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function AirQualityDashboard({ authToken, isDevelopmentAccess, onLogout }) {
+  const [devices, setDevices] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     let socket = null;
     let reconnectTimeoutId = null;
 
-    async function loadDashboard() {
+    async function loadDevices() {
       try {
         setLoading(true);
-        const response = await fetch('/api/dashboard/');
+        const headers = isDevelopmentAccess ? {} : { Authorization: `Token ${authToken}` };
+        const response = await fetch('/devices/api/?limit=30', { headers });
         if (!response.ok) {
           throw new Error(`API returned ${response.status}`);
         }
         const payload = await response.json();
         if (!cancelled) {
-          setData(payload);
+          setDevices(payload.devices ?? []);
           setError('');
           setLoading(false);
         }
-      } catch (fetchError) {
+      } catch {
         if (!cancelled) {
-          setError('Nepodarilo sa nacitat data z Django backendu. Skontroluj, ci bezi server na porte 8000.');
+          setError('Nepodarilo sa nacitat zariadenia z Django backendu.');
           setLoading(false);
         }
       }
@@ -106,15 +305,41 @@ export default function AirQualityDashboard() {
     function connectSocket() {
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
       const host = window.location.hostname || '127.0.0.1';
-      socket = new WebSocket(`${protocol}://${host}:8000/ws/data/`);
+      socket = new WebSocket(`${protocol}://${host}:8000/ws/devices/measurements/`);
 
       socket.onmessage = (event) => {
-        const newData = JSON.parse(event.data);
-        if (!cancelled) {
-          setData(newData);
-          setError('');
-          setLoading(false);
+        const payload = JSON.parse(event.data);
+        if (cancelled) return;
+
+        if (payload.type === 'initial') {
+          setDevices(payload.devices ?? []);
         }
+
+        if (payload.type === 'new_measurement') {
+          setDevices((currentDevices) => {
+            const nextDevices = [...currentDevices];
+            const deviceIndex = nextDevices.findIndex((device) => device.device_id === payload.device_id);
+            const measurement = payload.measurement ?? {};
+
+            if (deviceIndex === -1) {
+              nextDevices.unshift({
+                device_id: payload.device_id,
+                measurements: [measurement],
+              });
+              return nextDevices;
+            }
+
+            const device = nextDevices[deviceIndex];
+            nextDevices[deviceIndex] = {
+              ...device,
+              measurements: [measurement, ...(device.measurements ?? [])].slice(0, 30),
+            };
+            return nextDevices;
+          });
+        }
+
+        setError('');
+        setLoading(false);
       };
 
       socket.onopen = () => {
@@ -134,7 +359,7 @@ export default function AirQualityDashboard() {
       };
     }
 
-    loadDashboard();
+    loadDevices();
     connectSocket();
 
     return () => {
@@ -146,22 +371,52 @@ export default function AirQualityDashboard() {
         socket.close();
       }
     };
-  }, []);
+  }, [authToken, isDevelopmentAccess, refreshKey]);
 
-  const chartSeries = useMemo(() => {
-    if (!data?.history?.length) return [];
+  const measurements = useMemo(() => sortByTimeDesc(flattenDevices(devices)), [devices]);
+  const latestMeasurement = measurements[0] ?? null;
+  const allFields = useMemo(() => getMeasurementFields(latestMeasurement), [latestMeasurement]);
+  const numericFields = useMemo(() => getNumericFields(measurements), [measurements]);
+  const tableFields = useMemo(() => {
+    const fields = new Set();
+    measurements.slice(0, 10).forEach((measurement) => {
+      getMeasurementFields(measurement).forEach((field) => fields.add(field));
+    });
+    return Array.from(fields);
+  }, [measurements]);
 
-    return Object.entries(metricMeta).map(([key, meta]) => ({
-      id: key,
-      label: meta.label,
-      data: data.history.map((point) => point[key]),
-      color: meta.color,
-      curve: 'monotoneX',
-      showMark: false,
-    }));
-  }, [data]);
+  const cards = allFields.slice(0, 4).map((field) => {
+    const sameFieldMeasurements = measurements.filter((measurement) => measurement[field] !== undefined);
+    const current = sameFieldMeasurements[0]?.[field];
+    const previous = sameFieldMeasurements[1]?.[field] ?? current;
+    const trend =
+      typeof current === 'number' && typeof previous === 'number'
+        ? Number((current - previous).toFixed(2))
+        : 0;
 
-  const chartLabels = data?.history?.map((point) => point.label) ?? [];
+    return {
+      key: field,
+      label: formatLabel(field),
+      value: current,
+      trend,
+    };
+  });
+
+  const chartFields = numericFields.slice(0, 5);
+  const chartRows = [...measurements].reverse().slice(-30);
+  const chartSeries = chartFields.map((field, index) => ({
+    id: field,
+    label: formatLabel(field),
+    data: chartRows.map((measurement) =>
+      typeof measurement[field] === 'number' ? measurement[field] : null,
+    ),
+    color: COLORS[index % COLORS.length],
+    curve: 'monotoneX',
+    showMark: false,
+  }));
+  const chartLabels = chartRows.map((measurement) =>
+    measurement.received_at ? new Date(measurement.received_at).toLocaleTimeString('sk-SK') : '',
+  );
 
   return (
     <AppTheme>
@@ -177,10 +432,34 @@ export default function AirQualityDashboard() {
         })}
       >
         <Stack spacing={3} sx={{ maxWidth: 1400, mx: 'auto' }}>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            justifyContent="space-between"
+            alignItems={{ xs: 'stretch', sm: 'flex-start' }}
+            gap={2}
+          >
+            <Box>
+              <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                Admin panel
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Zariadenia a merania
+              </Typography>
+            </Box>
+            <Button
+              startIcon={<LogoutIcon />}
+              onClick={onLogout}
+              sx={{ alignSelf: { xs: 'stretch', sm: 'flex-start' } }}
+              variant="outlined"
+            >
+              Odhlasit
+            </Button>
+          </Stack>
+
           <Card
             variant="outlined"
             sx={{
-              borderRadius: 6,
+              borderRadius: 2,
               overflow: 'hidden',
               background:
                 'radial-gradient(circle at top left, rgba(37,99,235,0.18), transparent 35%), linear-gradient(135deg, #0f172a 0%, #11243d 55%, #16324f 100%)',
@@ -190,12 +469,12 @@ export default function AirQualityDashboard() {
             <CardContent sx={{ p: { xs: 3, md: 4 } }}>
               <Stack spacing={2}>
                 <Chip
-                  label={data?.summary?.status ?? 'Air quality'}
+                  label="Live zariadenia"
                   sx={{
                     alignSelf: 'flex-start',
                     bgcolor: 'rgba(255,255,255,0.12)',
                     color: 'white',
-                    borderRadius: 999,
+                    borderRadius: 2,
                   }}
                 />
                 <Stack
@@ -205,23 +484,22 @@ export default function AirQualityDashboard() {
                 >
                   <Box>
                     <Typography variant="h3" sx={{ fontWeight: 800, mb: 1 }}>
-                      Kvalita ovzdusia - {data?.city ?? 'Bratislava'}
+                      Dashboard merani
                     </Typography>
                     <Typography sx={{ maxWidth: 760, color: 'rgba(255,255,255,0.78)' }}>
-                      Frontend uz bezi na nasich datach z databazy. Zobrazuje posledne meranie,
-                      trendy pollutantov a historiu zaznamov z Django aplikacie.
+                      Zobrazuje polia dynamicky podla JSON dat zo zariadeni.
                     </Typography>
                   </Box>
                   <Box sx={{ minWidth: { md: 260 } }}>
                     <Typography variant="overline" sx={{ opacity: 0.72 }}>
-                      Posledne meranie
+                      Posledne zariadenie
                     </Typography>
-                    <Typography variant="h2" sx={{ fontWeight: 800 }}>
-                      {formatValue(data?.latest?.aqi)}
+                    <Typography variant="h4" sx={{ fontWeight: 800, overflowWrap: 'anywhere' }}>
+                      {latestMeasurement?.device_id ?? '--'}
                     </Typography>
                     <Typography sx={{ opacity: 0.76 }}>
-                      {data?.latest?.time
-                        ? new Date(data.latest.time).toLocaleString('sk-SK')
+                      {latestMeasurement?.received_at
+                        ? new Date(latestMeasurement.received_at).toLocaleString('sk-SK')
                         : 'Zatial bez dat'}
                     </Typography>
                   </Box>
@@ -230,7 +508,7 @@ export default function AirQualityDashboard() {
             </CardContent>
           </Card>
 
-          {loading && !data && (
+          {loading && !measurements.length && (
             <Stack direction="row" spacing={1.5} alignItems="center">
               <CircularProgress size={20} />
               <Typography>Nacitavam data...</Typography>
@@ -238,37 +516,48 @@ export default function AirQualityDashboard() {
           )}
 
           {error && <Alert severity="warning">{error}</Alert>}
+          {isDevelopmentAccess && (
+            <Alert severity="info">
+              Bezi vyvojovy vstup bez admin tokenu. Dashboard funguje, registracia zariadeni je vypnuta.
+            </Alert>
+          )}
 
-          <Grid container spacing={2.5}>
-            {(data?.cards ?? []).map((card) => (
-              <Grid key={card.key} item xs={12} sm={6} lg={3}>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', lg: 'repeat(4, 1fr)' },
+              gap: 2.5,
+            }}
+          >
+            {cards.map((card) => (
+              <Box key={card.key}>
                 <SummaryCard card={card} />
-              </Grid>
+              </Box>
             ))}
-          </Grid>
+          </Box>
 
-          <Grid container spacing={2.5}>
-            <Grid item xs={12} lg={8}>
-              <Card variant="outlined" sx={{ borderRadius: 5, height: '100%' }}>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 2fr) minmax(320px, 1fr)' },
+              gap: 2.5,
+              alignItems: 'start',
+            }}
+          >
+            <Box>
+              <Card variant="outlined" sx={{ borderRadius: 2, height: '100%' }}>
                 <CardContent>
                   <Stack spacing={1}>
-                    <Typography variant="h6">Vyvoj merani</Typography>
+                    <Typography variant="h6">Vyvoj ciselnych poli</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      Poslednych {data?.history?.length ?? 0} zaznamov z databazy.
+                      Poslednych {chartRows.length} merani napriec zariadeniami.
                     </Typography>
                   </Stack>
                   <Divider sx={{ my: 2 }} />
                   {chartSeries.length ? (
                     <LineChart
                       height={320}
-                      xAxis={[
-                        {
-                          scaleType: 'point',
-                          data: chartLabels,
-                          tickInterval: (value, index) =>
-                            index === 0 || index === chartLabels.length - 1 || index % 4 === 0,
-                        },
-                      ]}
+                      xAxis={[{ scaleType: 'point', data: chartLabels }]}
                       yAxis={[{ width: 52 }]}
                       series={chartSeries}
                       margin={{ top: 20, right: 24, bottom: 20, left: 10 }}
@@ -276,52 +565,55 @@ export default function AirQualityDashboard() {
                     />
                   ) : (
                     <Alert severity="info" sx={{ mt: 2 }}>
-                      V databaze zatial nie su ziadne merania.
+                      Zatial nie su dostupne ziadne ciselne polia pre graf.
                     </Alert>
                   )}
                 </CardContent>
               </Card>
-            </Grid>
+            </Box>
 
-            <Grid item xs={12} lg={4}>
-              <Card variant="outlined" sx={{ borderRadius: 5, height: '100%' }}>
-                <CardContent>
-                  <Stack spacing={2}>
-                    <Typography variant="h6">Prehlad</Typography>
-                    <Box>
-                      <Typography variant="body2" color="text.secondary">
-                        Pocet merani
-                      </Typography>
-                      <Typography variant="h4">{data?.summary?.measurements ?? 0}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="body2" color="text.secondary">
-                        Priemer AQI
-                      </Typography>
-                      <Typography variant="h4">
-                        {formatValue(data?.summary?.average_aqi)}
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="body2" color="text.secondary">
-                        Max AQI za posledne zaznamy
-                      </Typography>
-                      <Typography variant="h4">
-                        {formatValue(data?.summary?.max_aqi)}
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
+            <Box>
+              <Stack spacing={2.5}>
+                <Card variant="outlined" sx={{ borderRadius: 2 }}>
+                  <CardContent>
+                    <Stack spacing={2}>
+                      <Typography variant="h6">Prehlad</Typography>
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">
+                          Pocet zariadeni
+                        </Typography>
+                        <Typography variant="h4">{devices.length}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">
+                          Pocet merani
+                        </Typography>
+                        <Typography variant="h4">{measurements.length}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">
+                          Detegovane polia
+                        </Typography>
+                        <Typography variant="h4">{tableFields.length}</Typography>
+                      </Box>
+                    </Stack>
+                  </CardContent>
+                </Card>
+                <DeviceRegistration
+                  authToken={authToken}
+                  disabled={isDevelopmentAccess}
+                  onCreated={() => setRefreshKey((currentKey) => currentKey + 1)}
+                />
+              </Stack>
+            </Box>
+          </Box>
 
-          <Card variant="outlined" sx={{ borderRadius: 5 }}>
+          <Card variant="outlined" sx={{ borderRadius: 2 }}>
             <CardContent>
               <Stack spacing={1}>
                 <Typography variant="h6">Posledne zaznamy</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Tabulka poslednych merani z modelu `AirQuality`.
+                  Tabulka sa sklada z poli, ktore realne prisli v JSON meraniach.
                 </Typography>
               </Stack>
               <Divider sx={{ my: 2 }} />
@@ -330,24 +622,26 @@ export default function AirQualityDashboard() {
                   <TableHead>
                     <TableRow>
                       <TableCell>Cas</TableCell>
-                      <TableCell>Mesto</TableCell>
-                      <TableCell align="right">AQI</TableCell>
-                      <TableCell align="right">SO2</TableCell>
-                      <TableCell align="right">O3</TableCell>
-                      <TableCell align="right">PM10</TableCell>
-                      <TableCell align="right">NO2</TableCell>
+                      <TableCell>Zariadenie</TableCell>
+                      {tableFields.map((field) => (
+                        <TableCell key={field} align="right">
+                          {formatLabel(field)}
+                        </TableCell>
+                      ))}
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {(data?.table ?? []).map((row) => (
-                      <TableRow key={`${row.time}-${row.id}`} hover>
-                        <TableCell>{row.time}</TableCell>
-                        <TableCell>{row.city}</TableCell>
-                        <TableCell align="right">{row.aqi}</TableCell>
-                        <TableCell align="right">{row.so2}</TableCell>
-                        <TableCell align="right">{row.o3}</TableCell>
-                        <TableCell align="right">{row.pm10}</TableCell>
-                        <TableCell align="right">{row.no2}</TableCell>
+                    {measurements.slice(0, 10).map((row, index) => (
+                      <TableRow key={`${row.device_id}-${row.received_at}-${index}`} hover>
+                        <TableCell>
+                          {row.received_at ? new Date(row.received_at).toLocaleString('sk-SK') : '--'}
+                        </TableCell>
+                        <TableCell>{row.device_id}</TableCell>
+                        {tableFields.map((field) => (
+                          <TableCell key={field} align="right">
+                            {formatValue(row[field])}
+                          </TableCell>
+                        ))}
                       </TableRow>
                     ))}
                   </TableBody>
