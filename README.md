@@ -52,6 +52,9 @@ http://127.0.0.1:8000
 
 ### TODO pre frontend
 
+Aktualny frontend je napojeny na docasne endpointy `/api/dashboard/` a `/ws/data/`.
+Tieto endpointy nie su cielova integracia. Frontend ich ma nahradit endpointmi z tabulky nizsie.
+
 | Stranka / cast UI | Co ma robit | Endpointy |
 |---|---|---|
 | Login stranka | Formular pre admin prihlasenie. Posle `username` a `password`, ulozi vrateny token napriklad do `localStorage`. | `POST /api/auth/login/` |
