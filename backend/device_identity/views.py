@@ -2,6 +2,7 @@ import json
 import secrets
 
 from django.contrib.auth import authenticate
+from django.db.models import Count
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -21,6 +22,76 @@ def get_auth_token(request):
 
 
 ALLOWED_TYPES = {"int", "float", "string", "bool"}
+POLLUTANT_KEYS = ("aqi", "so2", "o3", "pm10", "no2")
+
+
+def numeric_value(data, key, default=0):
+    value = data.get(key, default)
+    return value if isinstance(value, int | float) else default
+
+
+def build_dashboard_payload():
+    measurements = list(
+        DeviceMeasurement.objects.select_related("device").order_by("-received_at")[:30]
+    )
+    history_source = list(reversed(measurements))
+
+    history = [
+        {
+            "label": m.received_at.strftime("%H:%M"),
+            **{key: numeric_value(m.data, key) for key in POLLUTANT_KEYS},
+        }
+        for m in history_source
+    ]
+
+    latest = measurements[0] if measurements else None
+    latest_data = latest.data if latest else {}
+    latest_aqi = numeric_value(latest_data, "aqi")
+    aqi_values = [point["aqi"] for point in history]
+    average_aqi = round(sum(aqi_values) / len(aqi_values), 1) if aqi_values else 0
+
+    def card_for(key, label, unit=""):
+        current = numeric_value(latest_data, key)
+        previous = history[-2][key] if len(history) > 1 else current
+        return {
+            "key": key,
+            "label": label,
+            "value": current,
+            "unit": unit,
+            "trend": round(current - previous, 1),
+        }
+
+    table = [
+        {
+            "id": m.id,
+            "time": m.received_at.isoformat(),
+            "city": m.device.device_id,
+            **{key: numeric_value(m.data, key) for key in POLLUTANT_KEYS},
+        }
+        for m in measurements[:10]
+    ]
+
+    return {
+        "city": "Bratislava",
+        "latest": {
+            "aqi": latest_aqi,
+            "time": latest.received_at.isoformat() if latest else None,
+        },
+        "summary": {
+            "status": "Air quality",
+            "measurements": DeviceMeasurement.objects.aggregate(count=Count("id"))["count"],
+            "average_aqi": average_aqi,
+            "max_aqi": max(aqi_values) if aqi_values else 0,
+        },
+        "cards": [
+            card_for("aqi", "AQI"),
+            card_for("pm10", "PM10"),
+            card_for("o3", "O3"),
+            card_for("no2", "NO2"),
+        ],
+        "history": history,
+        "table": table,
+    }
 
 
 @csrf_exempt
@@ -170,3 +241,7 @@ def devices_api(request):
         })
 
     return JsonResponse({"count": len(data), "devices": data})
+
+
+def dashboard_api(request):
+    return JsonResponse(build_dashboard_payload())

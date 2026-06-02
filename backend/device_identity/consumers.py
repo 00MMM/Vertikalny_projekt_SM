@@ -4,6 +4,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 
 from .models import Device, DeviceMeasurement
+from .views import build_dashboard_payload
 
 MEASUREMENTS_LIMIT = 30
 
@@ -43,6 +44,22 @@ def get_all_devices_with_measurements():
 @database_sync_to_async
 def get_device_ids():
     return list(Device.objects.filter(is_active=True).values_list("device_id", flat=True))
+
+
+@database_sync_to_async
+def get_dashboard_payload():
+    return build_dashboard_payload()
+
+
+class DashboardConsumer(AsyncWebsocketConsumer):
+    """
+    Compatibility endpoint for the current Vite dashboard.
+    Sends the dashboard payload on connect.
+    """
+
+    async def connect(self):
+        await self.accept()
+        await self.send(json.dumps(await get_dashboard_payload()))
 
 
 class DeviceMeasurementsConsumer(AsyncWebsocketConsumer):

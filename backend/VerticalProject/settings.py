@@ -29,6 +29,11 @@ DEBUG = True
 
 ALLOWED_HOSTS = ["host.docker.internal", "localhost", "127.0.0.1", "10.66.101.13"]
 
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
 
 # Application definition
 
@@ -44,6 +49,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "VerticalProject.middleware.LocalhostCorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -120,14 +126,21 @@ USE_I18N = True
 USE_TZ = True
 
 
+CHANNEL_LAYER_BACKEND = os.getenv(
+    "CHANNEL_LAYER_BACKEND",
+    "channels.layers.InMemoryChannelLayer",
+)
+
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [(os.getenv("REDIS_HOST", "localhost"), int(os.getenv("REDIS_PORT", 6379)))],
-        },
+        "BACKEND": CHANNEL_LAYER_BACKEND,
     }
 }
+
+if CHANNEL_LAYER_BACKEND == "channels_redis.core.RedisChannelLayer":
+    CHANNEL_LAYERS["default"]["CONFIG"] = {
+        "hosts": [(os.getenv("REDIS_HOST", "localhost"), int(os.getenv("REDIS_PORT", 6379)))],
+    }
 
 ASGI_APPLICATION = "VerticalProject.asgi.application"
 
