@@ -16,7 +16,9 @@ import AirQualityDashboard from './AirQualityDashboard.jsx';
 import AppTheme from './shared-theme/AppTheme';
 
 const TOKEN_KEY = 'adminToken';
+const USERNAME_KEY = 'adminUsername';
 const DEV_TOKEN = 'dev-bypass';
+const DEV_USERNAME = 'Vyvojovy vstup';
 
 function LoginPage({ onLogin }) {
   const [username, setUsername] = useState('');
@@ -42,7 +44,8 @@ function LoginPage({ onLogin }) {
       }
 
       localStorage.setItem(TOKEN_KEY, payload.token);
-      onLogin(payload.token);
+      localStorage.setItem(USERNAME_KEY, payload.username ?? username);
+      onLogin(payload.token, payload.username ?? username);
     } catch {
       setError('Prihlasenie zlyhalo.');
     } finally {
@@ -51,8 +54,10 @@ function LoginPage({ onLogin }) {
   }
 
   function handleDevelopmentAccess() {
+    const nextUsername = username.trim() || DEV_USERNAME;
     localStorage.setItem(TOKEN_KEY, DEV_TOKEN);
-    onLogin(DEV_TOKEN);
+    localStorage.setItem(USERNAME_KEY, nextUsername);
+    onLogin(DEV_TOKEN, nextUsername);
   }
 
   return (
@@ -118,6 +123,11 @@ function LoginPage({ onLogin }) {
 
 export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) ?? '');
+  const [username, setUsername] = useState(() => {
+    const storedUsername = localStorage.getItem(USERNAME_KEY) ?? '';
+    const storedToken = localStorage.getItem(TOKEN_KEY) ?? '';
+    return storedUsername || (storedToken === DEV_TOKEN ? DEV_USERNAME : '');
+  });
 
   async function handleLogout() {
     const currentToken = localStorage.getItem(TOKEN_KEY);
@@ -134,16 +144,26 @@ export default function App() {
     }
 
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USERNAME_KEY);
     setToken('');
+    setUsername('');
   }
 
   if (!token) {
-    return <LoginPage onLogin={setToken} />;
+    return (
+      <LoginPage
+        onLogin={(nextToken, nextUsername) => {
+          setToken(nextToken);
+          setUsername(nextUsername);
+        }}
+      />
+    );
   }
 
   return (
     <AirQualityDashboard
       authToken={token}
+      username={username || (token === DEV_TOKEN ? DEV_USERNAME : '')}
       isDevelopmentAccess={token === DEV_TOKEN}
       onLogout={handleLogout}
     />

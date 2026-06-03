@@ -25,7 +25,6 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import LogoutIcon from '@mui/icons-material/Logout';
-import RefreshIcon from '@mui/icons-material/Refresh';
 import SaveIcon from '@mui/icons-material/Save';
 import { alpha } from '@mui/material/styles';
 import { LineChart } from '@mui/x-charts/LineChart';
@@ -301,7 +300,7 @@ function DeviceRegistration({ authToken, disabled, onCreated }) {
   );
 }
 
-function MeasurementsExplorer({ deviceIds, measurements, selectedDeviceId, loading, onDeviceChange, onRefresh }) {
+function MeasurementsExplorer({ deviceIds, measurements, selectedDeviceId, onDeviceChange }) {
   const fields = useMemo(() => {
     const nextFields = new Set();
     measurements.slice(0, 15).forEach((measurement) => {
@@ -322,9 +321,6 @@ function MeasurementsExplorer({ deviceIds, measurements, selectedDeviceId, loadi
           >
             <Box>
               <Typography variant="h6">Prehlad merani</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Data z REST endpointu /devices/api/measurements/.
-              </Typography>
             </Box>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <Select
@@ -340,14 +336,6 @@ function MeasurementsExplorer({ deviceIds, measurements, selectedDeviceId, loadi
                   </MenuItem>
                 ))}
               </Select>
-              <Button
-                disabled={loading}
-                startIcon={loading ? <CircularProgress size={18} /> : <RefreshIcon />}
-                onClick={onRefresh}
-                variant="outlined"
-              >
-                Obnovit
-              </Button>
             </Stack>
           </Stack>
 
@@ -396,17 +384,16 @@ function MeasurementsExplorer({ deviceIds, measurements, selectedDeviceId, loadi
   );
 }
 
-export default function AirQualityDashboard({ authToken, isDevelopmentAccess, onLogout }) {
+export default function AirQualityDashboard({ authToken, username, isDevelopmentAccess, onLogout }) {
   const [devices, setDevices] = useState([]);
   const [liveDeviceIds, setLiveDeviceIds] = useState([]);
+  const [selectedChartDeviceId, setSelectedChartDeviceId] = useState('');
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [apiMeasurements, setApiMeasurements] = useState([]);
   const [error, setError] = useState('');
   const [measurementsError, setMeasurementsError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [measurementsLoading, setMeasurementsLoading] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [measurementsRefreshKey, setMeasurementsRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -531,7 +518,6 @@ export default function AirQualityDashboard({ authToken, isDevelopmentAccess, on
     let cancelled = false;
 
     async function loadMeasurements() {
-      setMeasurementsLoading(true);
       setMeasurementsError('');
 
       const params = new URLSearchParams({ limit: String(API_LIMIT) });
@@ -552,10 +538,6 @@ export default function AirQualityDashboard({ authToken, isDevelopmentAccess, on
         if (!cancelled) {
           setMeasurementsError('Nepodarilo sa nacitat prehlad merani.');
         }
-      } finally {
-        if (!cancelled) {
-          setMeasurementsLoading(false);
-        }
       }
     }
 
@@ -564,7 +546,7 @@ export default function AirQualityDashboard({ authToken, isDevelopmentAccess, on
     return () => {
       cancelled = true;
     };
-  }, [selectedDeviceId, measurementsRefreshKey, refreshKey]);
+  }, [selectedDeviceId, refreshKey]);
 
   useEffect(() => {
     if (!selectedDeviceId) return undefined;
@@ -621,9 +603,37 @@ export default function AirQualityDashboard({ authToken, isDevelopmentAccess, on
   }, [selectedDeviceId]);
 
   const measurements = useMemo(() => sortByTimeDesc(flattenDevices(devices)), [devices]);
+  const chartDeviceIds = useMemo(
+    () => devices.map((device) => device.device_id).filter(Boolean).sort(),
+    [devices],
+  );
+  useEffect(() => {
+    if (!chartDeviceIds.length) {
+      setSelectedChartDeviceId('');
+      return;
+    }
+
+    if (!selectedChartDeviceId || !chartDeviceIds.includes(selectedChartDeviceId)) {
+      setSelectedChartDeviceId(chartDeviceIds[0]);
+    }
+  }, [chartDeviceIds, selectedChartDeviceId]);
+
+  const chartMeasurements = useMemo(() => {
+    if (!selectedChartDeviceId) {
+      return [];
+    }
+
+    const selectedDevice = devices.find((device) => device.device_id === selectedChartDeviceId);
+    return sortByTimeDesc(
+      (selectedDevice?.measurements ?? []).map((measurement) => ({
+        device_id: selectedChartDeviceId,
+        ...measurement,
+      })),
+    );
+  }, [devices, selectedChartDeviceId]);
   const latestMeasurement = measurements[0] ?? null;
   const allFields = useMemo(() => getMeasurementFields(latestMeasurement), [latestMeasurement]);
-  const numericFields = useMemo(() => getNumericFields(measurements), [measurements]);
+  const chartNumericFields = useMemo(() => getNumericFields(chartMeasurements), [chartMeasurements]);
   const tableFields = useMemo(() => {
     const fields = new Set();
     measurements.slice(0, 10).forEach((measurement) => {
@@ -649,8 +659,8 @@ export default function AirQualityDashboard({ authToken, isDevelopmentAccess, on
     };
   });
 
-  const chartFields = numericFields.slice(0, 5);
-  const chartRows = [...measurements].reverse().slice(-30);
+  const chartFields = chartNumericFields.slice(0, 5);
+  const chartRows = [...chartMeasurements].reverse().slice(-30);
   const chartSeries = chartFields.map((field, index) => ({
     id: field,
     label: formatLabel(field),
@@ -664,6 +674,7 @@ export default function AirQualityDashboard({ authToken, isDevelopmentAccess, on
   const chartLabels = chartRows.map((measurement) =>
     measurement.received_at ? new Date(measurement.received_at).toLocaleTimeString('sk-SK') : '',
   );
+  const explorerMeasurements = selectedDeviceId ? apiMeasurements : measurements;
   const deviceIds = useMemo(() => {
     const ids = new Set([...liveDeviceIds, ...devices.map((device) => device.device_id)]);
     return Array.from(ids).sort();
@@ -691,7 +702,7 @@ export default function AirQualityDashboard({ authToken, isDevelopmentAccess, on
           >
             <Box>
               <Typography variant="h5" sx={{ fontWeight: 800 }}>
-                Admin panel
+                {username || 'Prihlaseny pouzivatel'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Zariadenia a merania
@@ -802,10 +813,33 @@ export default function AirQualityDashboard({ authToken, isDevelopmentAccess, on
               <Card variant="outlined" sx={{ borderRadius: 2, height: '100%' }}>
                 <CardContent>
                   <Stack spacing={1}>
-                    <Typography variant="h6">Vyvoj ciselnych poli</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Poslednych {chartRows.length} merani napriec zariadeniami.
-                    </Typography>
+                    <Stack
+                      direction={{ xs: 'column', sm: 'row' }}
+                      justifyContent="space-between"
+                      alignItems={{ xs: 'stretch', sm: 'center' }}
+                      gap={1.5}
+                    >
+                      <Box>
+                        <Typography variant="h6">Vyvoj ciselnych poli</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Poslednych {chartRows.length} merani zo zariadenia.
+                        </Typography>
+                      </Box>
+                      <Select
+                        displayEmpty
+                        disabled={!chartDeviceIds.length}
+                        value={selectedChartDeviceId}
+                        onChange={(event) => setSelectedChartDeviceId(event.target.value)}
+                        sx={{ minWidth: { sm: 220 } }}
+                      >
+                        {!chartDeviceIds.length && <MenuItem value="">Ziadne zariadenia</MenuItem>}
+                        {chartDeviceIds.map((deviceId) => (
+                          <MenuItem key={deviceId} value={deviceId}>
+                            {deviceId}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </Stack>
                   </Stack>
                   <Divider sx={{ my: 2 }} />
                   {chartSeries.length ? (
@@ -852,7 +886,7 @@ export default function AirQualityDashboard({ authToken, isDevelopmentAccess, on
                       </Box>
                       <Box>
                         <Typography variant="body2" color="text.secondary">
-                          Detegovane polia
+                          Typy merani
                         </Typography>
                         <Typography variant="h4">{tableFields.length}</Typography>
                       </Box>
@@ -871,54 +905,11 @@ export default function AirQualityDashboard({ authToken, isDevelopmentAccess, on
           {measurementsError && <Alert severity="warning">{measurementsError}</Alert>}
           <MeasurementsExplorer
             deviceIds={deviceIds}
-            measurements={apiMeasurements}
+            measurements={explorerMeasurements}
             selectedDeviceId={selectedDeviceId}
-            loading={measurementsLoading}
             onDeviceChange={setSelectedDeviceId}
-            onRefresh={() => setMeasurementsRefreshKey((currentKey) => currentKey + 1)}
           />
 
-          <Card variant="outlined" sx={{ borderRadius: 2 }}>
-            <CardContent>
-              <Stack spacing={1}>
-                <Typography variant="h6">Posledne zaznamy</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Tabulka sa sklada z poli, ktore realne prisli v JSON meraniach.
-                </Typography>
-              </Stack>
-              <Divider sx={{ my: 2 }} />
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Cas</TableCell>
-                      <TableCell>Zariadenie</TableCell>
-                      {tableFields.map((field) => (
-                        <TableCell key={field} align="right">
-                          {formatLabel(field)}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {measurements.slice(0, 10).map((row, index) => (
-                      <TableRow key={`${row.device_id}-${row.received_at}-${index}`} hover>
-                        <TableCell>
-                          {row.received_at ? new Date(row.received_at).toLocaleString('sk-SK') : '--'}
-                        </TableCell>
-                        <TableCell>{row.device_id}</TableCell>
-                        {tableFields.map((field) => (
-                          <TableCell key={field} align="right">
-                            {formatValue(row[field])}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </CardContent>
-          </Card>
         </Stack>
       </Box>
     </AppTheme>

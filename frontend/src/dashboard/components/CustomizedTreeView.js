@@ -96,7 +96,7 @@ TransitionComponent.propTypes = {
   in: PropTypes.bool,
 };
 
-function CustomLabel({ color, expandable, children, ...other }) {
+function CustomLabel({ color, children, ...other }) {
   const theme = useTheme();
   const colors = {
     blue: (theme.vars || theme).palette.primary.main,
@@ -121,7 +121,6 @@ function CustomLabel({ color, expandable, children, ...other }) {
 CustomLabel.propTypes = {
   children: PropTypes.node,
   color: PropTypes.oneOf(['blue', 'green']),
-  expandable: PropTypes.bool,
 };
 
 const CustomTreeItem = React.forwardRef(function CustomTreeItem(props, ref) {
