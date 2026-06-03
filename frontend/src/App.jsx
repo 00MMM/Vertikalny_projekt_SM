@@ -76,9 +76,6 @@ function LoginPage({ onLogin }) {
                 <Typography variant="h4" sx={{ fontWeight: 800 }}>
                   Prihlasenie
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Admin pristup k zariadeniam
-                </Typography>
               </Box>
 
               {error && <Alert severity="error">{error}</Alert>}
