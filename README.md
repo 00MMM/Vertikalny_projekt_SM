@@ -85,6 +85,10 @@ python manage.py createsuperuser
 python manage.py create_device django-listener
 ```
 
+Prikaz `createsuperuser` vytvori Django ucet s `is_staff=True` a `is_superuser=True`.
+Tieto prihlasovacie udaje sa pouzivaju pre admin pristup vo frontende cez `POST /api/auth/login/`.
+Backend pre chranene admin endpointy kontroluje `is_staff=True`.
+
 Token vypisany prikazom `create_device django-listener` skopiruj do `.env` ako `MQTT_TOKEN`.
 
 ### Spustenie backend sluzieb
@@ -131,6 +135,14 @@ http://127.0.0.1:8000
 
 Pre WebSocket endpointy pouzivaj Daphne, nie `python manage.py runserver`.
 
+Django admin je dostupny na:
+
+```text
+http://127.0.0.1:8000/admin/
+```
+
+V Django admin rozhrani sa daju spravovat pouzivatelia. Pre pristup k admin endpointom vo frontende musi mat pouzivatel zapnuty `Staff status` (`is_staff=True`).
+
 ## Poznamky
 
 - `frontend/node_modules/` a `frontend/dist/` sa necommitnuju.
@@ -138,11 +150,7 @@ Pre WebSocket endpointy pouzivaj Daphne, nie `python manage.py runserver`.
 - Frontend treba napojit podla backend integracnej dokumentacie:
   https://github.com/00MMM/Vertikalny_projekt_SM/blob/main/backend/INTEGRATION.md
 
-### TODO pre frontend
-
-Aktualny frontend je napojeny na docasne endpointy `/api/dashboard/` a `/ws/data/`.
-Tieto endpointy nie su cielova integracia. Frontend ich ma nahradit endpointmi z tabulky nizsie.
-
+### Endpoints
 | Stranka / cast UI | Co ma robit | Endpointy |
 |---|---|---|
 | Login stranka | Formular pre admin prihlasenie. Posle `username` a `password`, ulozi vrateny token napriklad do `localStorage`. | `POST /api/auth/login/` |
@@ -155,4 +163,3 @@ Tieto endpointy nie su cielova integracia. Frontend ich ma nahradit endpointmi z
 | Zoznam zariadeni cez WebSocket | Live zoznam aktivnych zariadeni. | `ws://localhost:8000/ws/devices/` |
 | Django admin odkaz | Volitelny odkaz pre adminov na spravu dat v Django administracii. | `http://localhost:8000/admin/` |
 
-Frontend by nemal byt napojeny na docasne a nedokumentovane endpointy typu `/api/dashboard/` alebo `/ws/data/`, pokial sa explicitne nedohodne opak. Aktualne zmluvne endpointy su tie z `backend/INTEGRATION.md`.
