@@ -53,7 +53,7 @@ Copy-Item .env.example .env
 
 ### Databaza
 
-Pred spustenim Django prikazov musi bezat PostgreSQL. Na macOS cez Homebrew napriklad:
+Pred spustenim Django prikazov musi bezat PostgreSQL. Spustit ho mozes lubovolnym sposobom: cez Homebrew, Docker, system service, Postgres.app alebo lokalnu instalaciu. Dole je iba priklad pre macOS cez Homebrew:
 
 ```bash
 pg_ctl start -D /opt/homebrew/var/postgresql@17 -l /opt/homebrew/var/log/postgresql@17.log
@@ -162,4 +162,3 @@ V Django admin rozhrani sa daju spravovat pouzivatelia. Pre pristup k admin endp
 | Realtime pre jedno zariadenie | Detail zariadenia s live meraniami iba pre vybrane `device_id`. | `ws://localhost:8000/ws/devices/<device_id>/measurements/` |
 | Zoznam zariadeni cez WebSocket | Live zoznam aktivnych zariadeni. | `ws://localhost:8000/ws/devices/` |
 | Django admin odkaz | Volitelny odkaz pre adminov na spravu dat v Django administracii. | `http://localhost:8000/admin/` |
-
