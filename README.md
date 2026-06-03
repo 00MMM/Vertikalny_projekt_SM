@@ -1,4 +1,4 @@
-# Vertikalny projekt SM
+# Vertikalny projekt
 
 Projekt je rozdeleny na frontend a backend.
 

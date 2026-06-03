@@ -207,6 +207,7 @@ def measurements_api(request):
     measurements = DeviceMeasurement.objects.select_related("device").order_by("-received_at")
     if device_id:
         measurements = measurements.filter(device__device_id=device_id)
+    total_count = measurements.count()
     measurements = measurements[:limit]
 
     data = [
@@ -218,19 +219,20 @@ def measurements_api(request):
         for m in measurements
     ]
 
-    return JsonResponse({"count": len(data), "measurements": data})
+    return JsonResponse({"count": len(data), "total_count": total_count, "measurements": data})
 
 
 def devices_api(request):
     limit = int(request.GET.get("limit", 10))
 
-    devices = Device.objects.filter(is_active=True)
+    devices = Device.objects.filter(is_active=True).annotate(total_measurements=Count("measurements"))
 
     data = []
     for device in devices:
         measurements = DeviceMeasurement.objects.filter(device=device).order_by("-received_at")[:limit]
         data.append({
             "device_id": device.device_id,
+            "total_measurements": device.total_measurements,
             "measurements": [
                 {
                     "received_at": m.received_at.isoformat(),

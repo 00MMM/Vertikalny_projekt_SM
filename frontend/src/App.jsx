@@ -18,7 +18,7 @@ import AppTheme from './shared-theme/AppTheme';
 const TOKEN_KEY = 'adminToken';
 const USERNAME_KEY = 'adminUsername';
 const DEV_TOKEN = 'dev-bypass';
-const DEV_USERNAME = 'Vyvojovy vstup';
+const DEV_USERNAME = 'Vývojový vstup';
 
 function LoginPage({ onLogin }) {
   const [username, setUsername] = useState('');
@@ -47,7 +47,7 @@ function LoginPage({ onLogin }) {
       localStorage.setItem(USERNAME_KEY, payload.username ?? username);
       onLogin(payload.token, payload.username ?? username);
     } catch {
-      setError('Prihlasenie zlyhalo.');
+      setError('Prihlásenie zlyhalo.');
     } finally {
       setSubmitting(false);
     }
@@ -79,7 +79,7 @@ function LoginPage({ onLogin }) {
             <Stack component="form" spacing={2.5} onSubmit={handleSubmit}>
               <Box>
                 <Typography variant="h4" sx={{ fontWeight: 800 }}>
-                  Prihlasenie
+                  Prihlásenie
                 </Typography>
               </Box>
 
@@ -108,10 +108,10 @@ function LoginPage({ onLogin }) {
                 type="submit"
                 variant="contained"
               >
-                Prihlasit
+                Prihlásiť
               </Button>
               <Button onClick={handleDevelopmentAccess} variant="outlined">
-                Pokracovat bez prihlasenia
+                Pokračovať bez prihlásenia
               </Button>
             </Stack>
           </CardContent>

@@ -36,6 +36,7 @@ def get_all_devices_with_measurements():
         )
         result.append({
             "device_id": device.device_id,
+            "total_measurements": device.measurements.count(),
             "measurements": [serialize_measurement(m) for m in measurements],
         })
     return result
