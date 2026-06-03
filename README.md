@@ -28,20 +28,108 @@ http://localhost:5173
 
 ## Backend
 
+Backend vyzaduje Python 3.12+, PostgreSQL, Docker a Docker Compose.
+
+### Priprava prostredia
+
 ```bash
 cd backend
-python -m venv venv
-source venv/bin/activate
+python3.12 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver
+cp .env.example .env
 ```
 
-Django server standardne bezi na:
+Windows PowerShell:
+
+```powershell
+cd backend
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+
+### Databaza
+
+Pred spustenim Django prikazov musi bezat PostgreSQL. Na macOS cez Homebrew napriklad:
+
+```bash
+pg_ctl start -D /opt/homebrew/var/postgresql@17 -l /opt/homebrew/var/log/postgresql@17.log
+```
+
+Windows PowerShell priklad, ak je PostgreSQL nainstalovany ako Windows service:
+
+```powershell
+Get-Service postgresql*
+Start-Service postgresql-x64-17
+```
+
+Nazov service sa moze lisit podla verzie PostgreSQL, napr. `postgresql-x64-16`.
+
+Databaza musi zodpovedat hodnotam v `.env`, standardne:
+
+```text
+DB_NAME=verticalproject
+DB_USER=postgres
+DB_HOST=localhost
+DB_PORT=5432
+```
+
+### Prve spustenie backendu
+
+```bash
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py create_device django-listener
+```
+
+Token vypisany prikazom `create_device django-listener` skopiruj do `.env` ako `MQTT_TOKEN`.
+
+### Spustenie backend sluzieb
+
+Najprv zapni Docker daemon, napriklad Docker Desktop. Potom spusti tieto prikazy v samostatnych terminaloch:
+
+```bash
+# 1. Mosquitto + Redis (Docker)
+docker compose up
+```
+
+```bash
+# 2. Django / Daphne (ASGI - required for WebSocket support)
+daphne -b 127.0.0.1 -p 8000 VerticalProject.asgi:application
+```
+
+```bash
+# 3. MQTT listener (reads from broker, writes to DB, pushes to WebSocket)
+python manage.py mqtt_listener
+```
+
+Windows PowerShell pouziva rovnake prikazy po aktivacii `.venv`:
+
+```powershell
+# 1. Mosquitto + Redis (Docker)
+docker compose up
+```
+
+```powershell
+# 2. Django / Daphne (ASGI - required for WebSocket support)
+daphne -b 127.0.0.1 -p 8000 VerticalProject.asgi:application
+```
+
+```powershell
+# 3. MQTT listener (reads from broker, writes to DB, pushes to WebSocket)
+python manage.py mqtt_listener
+```
+
+Backend potom bezi na:
 
 ```text
 http://127.0.0.1:8000
 ```
+
+Pre WebSocket endpointy pouzivaj Daphne, nie `python manage.py runserver`.
 
 ## Poznamky
 
